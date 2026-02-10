@@ -83,6 +83,10 @@ double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot22[MAXN], s_plot23[MAXN], s_
 double match_time = 0, solve_time = 0, solve_const_H_time = 0;
 int    kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
 bool   runtime_pos_log = false, pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
+bool   savePose = false;
+string savePoseDirectory;
+ofstream tum_file;
+double last_tum_save_time = -1.0;
 /**************************/
 
 float res_last[100000] = {0.0};
@@ -1000,6 +1004,16 @@ int main(int argc, char** argv)
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
+    nh.param<bool>("savePose", savePose, false);
+    nh.param<string>("savePoseDirectory", savePoseDirectory, "");
+
+    if (savePose)
+    {
+        string tum_file_path = savePoseDirectory;
+        tum_file.open(tum_file_path, ios::out | ios::trunc);
+        if(!tum_file.is_open()) cout << "Failed to open TUM file at: " << tum_file_path << endl;
+        else cout << "Saving TUM trajectory to: " << tum_file_path << endl;
+    }
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
     
     path.header.stamp    = ros::Time::now();
@@ -1729,6 +1743,19 @@ int main(int argc, char** argv)
 
             /******* Publish odometry *******/
             publish_odometry(pubOdomAftMapped);
+
+            if (savePose && tum_file.is_open())
+            {
+               if (last_tum_save_time < 0 || Measures.lidar_beg_time - last_tum_save_time >= 0.5)
+               {
+                    tum_file.setf(ios::fixed, ios::floatfield);
+                    tum_file.precision(6);
+                    tum_file << Measures.lidar_beg_time << " "
+                            << state_point.pos(0) << " " << state_point.pos(1) << " " << state_point.pos(2) << " "
+                            << geoQuat.x << " " << geoQuat.y << " " << geoQuat.z << " " << geoQuat.w << endl;
+                    last_tum_save_time = Measures.lidar_beg_time;
+               }
+            }
 
             /*** add the feature points to map kdtree ***/
             t3 = omp_get_wtime();
