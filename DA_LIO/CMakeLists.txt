@@ -59,8 +59,12 @@ find_package(catkin REQUIRED COMPONENTS
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.8 REQUIRED)
 find_package(Boost REQUIRED timer) #GTSAM require
-find_package(GTSAM REQUIRED PATHS "/home/third_library/gtsam-4.0.3/install")
-find_package(Ceres REQUIRED PATHS "/home/third_library/ceres-solver-2.1.0/install")
+# find_package(GTSAM REQUIRED PATHS "/home/third_library/gtsam-4.0.3/install")
+# find_package(Ceres REQUIRED PATHS "/home/third_library/ceres-solver-2.1.0/install")
+set(GTSAM_DIR /home/tkw/seu_clean_robot/seu_clean_robot_env/gtsam-4.0.3-install/lib/cmake/GTSAM)
+find_package(GTSAM REQUIRED)
+set(Ceres_DIR /home/tkw/ceres2.1.0/ceres-solver-2.1.0/install/lib/cmake/Ceres)
+find_package(Ceres REQUIRED)
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
 

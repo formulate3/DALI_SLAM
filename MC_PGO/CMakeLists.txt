@@ -27,8 +27,12 @@ find_package(PCL REQUIRED)
 find_package(OpenMP REQUIRED) # ikd-tree require
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 find_package(Boost REQUIRED timer) #GTSAM require
-find_package(GTSAM REQUIRED PATHS "/home/third_library/gtsam-4.0.3/install")
-find_package(Ceres REQUIRED PATHS "/home/third_library/ceres-solver-2.1.0/install")
+# find_package(GTSAM REQUIRED PATHS "/home/third_library/gtsam-4.0.3/install")
+# find_package(Ceres REQUIRED PATHS "/home/third_library/ceres-solver-2.1.0/install")
+set(GTSAM_DIR /home/tkw/seu_clean_robot/seu_clean_robot_env/gtsam-4.0.3-install/lib/cmake/GTSAM)
+find_package(GTSAM REQUIRED)
+set(Ceres_DIR /home/tkw/ceres2.1.0/ceres-solver-2.1.0/install/lib/cmake/Ceres)
+find_package(Ceres REQUIRED)
 find_package(PDAL REQUIRED)
 
 find_package(catkin REQUIRED COMPONENTS
