@@ -16,6 +16,7 @@ mapping:
     gyr_cov: 0.1
     b_acc_cov: 0.0001
     b_gyr_cov: 0.0001
+    degeneracy: 4.48  #sqrt(20) Adjust according to the Log/mini_eigenvalue.txt
     fov_degree:    180
     det_range:     150.0
     extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
