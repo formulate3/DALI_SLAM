@@ -1077,6 +1077,7 @@ int main(int argc, char** argv)
     //ofstream f_imu_pose(root_dir + "/Log/imu_poses.txt");
     //ofstream f_imu_pose_correct(root_dir + "/Log/imu_poses_correct.txt");
     ofstream f_degenerate(root_dir + "/Log/mini_eigenvalue.txt");
+    ofstream f_init_hessian_eigs(root_dir + "/Log/init_hessian_eigenvalues.txt");
 
     /*** ROS subscribe initialization ***/
     ros::Subscriber sub_pcl = p_pre->lidar_type == AVIA ? \
@@ -1214,6 +1215,22 @@ int main(int argc, char** argv)
                 f_degenerate.setf(ios::showpoint);
                 f_degenerate.precision(4);
                 f_degenerate << lidar_end_time << " " << eigenvalue_vec[0] << endl;
+
+                Matrix<double, 3, 3> trans_hessian = coefficient_matrix.block<3, 3>(0, 0);
+                Matrix<double, 3, 3> rot_hessian = coefficient_matrix.block<3, 3>(3, 3);
+                SelfAdjointEigenSolver<Matrix<double, 3, 3>> trans_solver(trans_hessian);
+                SelfAdjointEigenSolver<Matrix<double, 3, 3>> rot_solver(rot_hessian);
+                if (f_init_hessian_eigs.is_open() && trans_solver.info() == Eigen::Success && rot_solver.info() == Eigen::Success)
+                {
+                    const auto &trans_eigs = trans_solver.eigenvalues();
+                    const auto &rot_eigs = rot_solver.eigenvalues();
+                    f_init_hessian_eigs.setf(ios::fixed);
+                    f_init_hessian_eigs.setf(ios::showpoint);
+                    f_init_hessian_eigs.precision(6);
+                    f_init_hessian_eigs << Measures.lidar_end_time << " "
+                                        << trans_eigs(0) << " " << trans_eigs(1) << " " << trans_eigs(2) << " "
+                                        << rot_eigs(0) << " " << rot_eigs(1) << " " << rot_eigs(2) << endl;
+                }
             }
 
             //scan-to-Map registration using filter predicted pose as initial guess
@@ -1827,6 +1844,7 @@ int main(int argc, char** argv)
 
     fout_out.close();
     fout_pre.close();
+    f_init_hessian_eigs.close();
 
     if (runtime_pos_log)
     {
