@@ -1216,20 +1216,46 @@ int main(int argc, char** argv)
                 f_degenerate.precision(4);
                 f_degenerate << lidar_end_time << " " << eigenvalue_vec[0] << endl;
 
-                Matrix<double, 3, 3> trans_hessian = coefficient_matrix.block<3, 3>(0, 0);
-                Matrix<double, 3, 3> rot_hessian = coefficient_matrix.block<3, 3>(3, 3);
-                SelfAdjointEigenSolver<Matrix<double, 3, 3>> trans_solver(trans_hessian);
-                SelfAdjointEigenSolver<Matrix<double, 3, 3>> rot_solver(rot_hessian);
-                if (f_init_hessian_eigs.is_open() && trans_solver.info() == Eigen::Success && rot_solver.info() == Eigen::Success)
+                Matrix<double, 3, 3> A = coefficient_matrix.block<3, 3>(0, 0);
+                Matrix<double, 3, 3> B = coefficient_matrix.block<3, 3>(0, 3);
+                Matrix<double, 3, 3> C = coefficient_matrix.block<3, 3>(3, 0);
+                Matrix<double, 3, 3> D = coefficient_matrix.block<3, 3>(3, 3);
+
+                Matrix<double, 3, 3> trans_hessian_direct = A;
+                Matrix<double, 3, 3> rot_hessian_direct = D;
+                Matrix<double, 3, 3> trans_hessian_schur = A;
+                Matrix<double, 3, 3> rot_hessian_schur = D;
+
+                Eigen::LDLT<Matrix<double, 3, 3>> ldlt_D(D);
+                Eigen::LDLT<Matrix<double, 3, 3>> ldlt_A(A);
+                if (ldlt_D.info() == Eigen::Success && ldlt_A.info() == Eigen::Success)
                 {
-                    const auto &trans_eigs = trans_solver.eigenvalues();
-                    const auto &rot_eigs = rot_solver.eigenvalues();
+                    // Translation Schur complement: A - B * D^{-1} * C
+                    trans_hessian_schur = A - B * ldlt_D.solve(C);
+                    // Rotation Schur complement: D - C * A^{-1} * B
+                    rot_hessian_schur = D - C * ldlt_A.solve(B);
+                }
+
+                SelfAdjointEigenSolver<Matrix<double, 3, 3>> trans_solver_direct(trans_hessian_direct);
+                SelfAdjointEigenSolver<Matrix<double, 3, 3>> rot_solver_direct(rot_hessian_direct);
+                SelfAdjointEigenSolver<Matrix<double, 3, 3>> trans_solver_schur(trans_hessian_schur);
+                SelfAdjointEigenSolver<Matrix<double, 3, 3>> rot_solver_schur(rot_hessian_schur);
+                if (f_init_hessian_eigs.is_open() &&
+                    trans_solver_direct.info() == Eigen::Success && rot_solver_direct.info() == Eigen::Success &&
+                    trans_solver_schur.info() == Eigen::Success && rot_solver_schur.info() == Eigen::Success)
+                {
+                    const auto &trans_eigs_direct = trans_solver_direct.eigenvalues();
+                    const auto &rot_eigs_direct = rot_solver_direct.eigenvalues();
+                    const auto &trans_eigs_schur = trans_solver_schur.eigenvalues();
+                    const auto &rot_eigs_schur = rot_solver_schur.eigenvalues();
                     f_init_hessian_eigs.setf(ios::fixed);
                     f_init_hessian_eigs.setf(ios::showpoint);
                     f_init_hessian_eigs.precision(6);
                     f_init_hessian_eigs << Measures.lidar_end_time << " "
-                                        << trans_eigs(0) << " " << trans_eigs(1) << " " << trans_eigs(2) << " "
-                                        << rot_eigs(0) << " " << rot_eigs(1) << " " << rot_eigs(2) << endl;
+                                        << trans_eigs_direct(0) << " " << trans_eigs_direct(1) << " " << trans_eigs_direct(2) << " "
+                                        << rot_eigs_direct(0) << " " << rot_eigs_direct(1) << " " << rot_eigs_direct(2) << " "
+                                        << trans_eigs_schur(0) << " " << trans_eigs_schur(1) << " " << trans_eigs_schur(2) << " "
+                                        << rot_eigs_schur(0) << " " << rot_eigs_schur(1) << " " << rot_eigs_schur(2) << endl;
                 }
             }
 
