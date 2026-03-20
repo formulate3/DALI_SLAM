@@ -1781,7 +1781,62 @@ public:
 			#else
 				cov P_temp = (P_/R).inverse();
 				//Eigen::Matrix<scalar_type, 12, Eigen::Dynamic> h_T = h_x_.transpose();
-				Eigen::Matrix<scalar_type, 12, 12> HTH = h_x_.transpose() * h_x_; 
+				Eigen::Matrix<scalar_type, 12, 12> HTH = h_x_.transpose() * h_x_;
+				
+				if (enable_adaptive_compensation_)
+				{
+					// [START] 自适应补偿
+					// 1. 提取 6x6 位姿信息子块
+					Eigen::Matrix3d L_tt = HTH.template block<3, 3>(0, 0); // 平移块
+					Eigen::Matrix3d L_rr = HTH.template block<3, 3>(3, 3); // 旋转块
+					Eigen::Matrix3d L_tr = HTH.template block<3, 3>(0, 3); // 交叉耦合块
+					Eigen::Matrix3d L_rt = HTH.template block<3, 3>(3, 0);
+					
+					// 2. 计算舒尔补 (加入极小正则化防止完全不可逆导致的NaN)
+					Eigen::Matrix3d L_rr_inv = (L_rr + 1e-6 * Eigen::Matrix3d::Identity()).inverse();
+					Eigen::Matrix3d L_tt_inv = (L_tt + 1e-6 * Eigen::Matrix3d::Identity()).inverse();
+					Eigen::Matrix3d S_t = L_tt - L_tr * L_rr_inv * L_rt; // 平移舒尔补
+					Eigen::Matrix3d S_r = L_rr - L_rt * L_tt_inv * L_tr; // 旋转舒尔补
+
+					// 3. 特征值分解 (Eigen库的SelfAdjointEigenSolver会将特征值从小到大排序)
+					Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> es_t(S_t);
+					Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> es_r(S_r);
+
+					// 4. 定义退化参数 (由外部配置设置)
+					double lambda_th = static_cast<double>(lambda_th_);   // 绝对特征值阈值
+					double gamma = static_cast<double>(gamma_);            // 极大的阻尼惩罚权重
+				
+					Eigen::Matrix3d D_t = Eigen::Matrix3d::Zero();
+					Eigen::Matrix3d D_r = Eigen::Matrix3d::Zero();
+
+					// 5. 评价平移退化并构造阻尼矩阵
+					// es_t.eigenvalues()(0) 是最小特征值
+					for (int i = 0; i < 3; ++i) {
+						double lambda_i = es_t.eigenvalues()(i);
+						if (lambda_i < lambda_th) {
+							// 计算连续退化因子 alpha (趋近于0表示严重退化)
+							double alpha = 1.0 - std::exp(-lambda_i / lambda_th);
+							// 提取对应的主方向 (列向量)
+							Eigen::Vector3d v_i = es_t.eigenvectors().col(i);
+							// 累加自适应阻尼
+							D_t += gamma * (1.0 - alpha) * v_i * v_i.transpose();
+						}
+					}
+					// 6. 评价旋转退化并构造阻尼矩阵
+					for (int i = 0; i < 3; ++i) {
+						double lambda_i = es_r.eigenvalues()(i);
+						if (lambda_i < lambda_th) {
+							double alpha = 1.0 - std::exp(-lambda_i / lambda_th);
+							Eigen::Vector3d v_i = es_r.eigenvectors().col(i);
+							D_r += gamma * (1.0 - alpha) * v_i * v_i.transpose();
+						}
+					}
+					// 7. 靶向阻尼注入 HTH 矩阵
+					HTH.template block<3, 3>(0, 0) += D_t;
+					HTH.template block<3, 3>(3, 3) += D_r;
+					//[END]
+				}
+
 				P_temp. template block<12, 12>(0, 0) += HTH;
 				/*
 				Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> h_x_cur = Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic>::Zero(dof_Measurement, n);
@@ -1946,6 +2001,17 @@ public:
 		P_ = input_cov;
 	}
 
+	void set_degeneracy_params(scalar_type lambda_th, scalar_type gamma)
+	{
+		lambda_th_ = lambda_th;
+		gamma_ = gamma;
+	}
+
+	void set_adaptive_compensation_enabled(bool enabled)
+	{
+		enable_adaptive_compensation_ = enabled;
+	}
+
 	const state& get_x() const {
 		return x_;
 	}
@@ -1977,6 +2043,10 @@ private:
 
 	measurementModel_share *h_share;
 	measurementModel_dyn_share *h_dyn_share;
+
+	scalar_type lambda_th_ = scalar_type(20.0);
+	scalar_type gamma_ = scalar_type(10000.0);
+	bool enable_adaptive_compensation_ = true;
 
 	int maximum_iter = 0;
 	scalar_type limit[n];

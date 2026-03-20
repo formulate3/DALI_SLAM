@@ -128,6 +128,9 @@ double knot_spacing = 0.05; //50ms
 double knot_pose_spacing = 0.09; //90ms
 int64_t knot_spacing_ns = static_cast<int64_t>(knot_spacing * s_to_ns);
 double degeneracy = 0; //threshold for degeneracy detection
+double lambda_th = 20.0;
+double gamma_damping = 10000.0;
+bool enable_adaptive_compensation = true;
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -780,40 +783,40 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
     }
 
     //Degeneracy detecion and Jacobian remapping
-    cout << "effec_feat_num: " << effct_feat_num << endl;
-    if (effct_feat_num != 0)
-    {
-        Eigen::MatrixXd Jacobian = Eigen::MatrixXd::Zero(effct_feat_num, 6);
-        for (int j = 0; j < effct_feat_num; ++j) {
-            Jacobian.block<1,6>(j,0) = ekfom_data.h_x.block<1,6>(j,0);
-        }
-        Matrix<double,6,6> coefficient_matrix = Jacobian.transpose() * Jacobian;
-        coefficient_matrix = Jacobian.transpose() * Jacobian;
-        SelfAdjointEigenSolver<Matrix<double, 6, 6>> eigen_solver(coefficient_matrix);
-        if (eigen_solver.info() != Eigen::Success)
-        {
-            abort();
-        }
-        if (eigen_solver.eigenvalues()[0] > degeneracy * degeneracy)
-            return;
+    // cout << "effec_feat_num: " << effct_feat_num << endl;
+    // if (effct_feat_num != 0)
+    // {
+    //     Eigen::MatrixXd Jacobian = Eigen::MatrixXd::Zero(effct_feat_num, 6);
+    //     for (int j = 0; j < effct_feat_num; ++j) {
+    //         Jacobian.block<1,6>(j,0) = ekfom_data.h_x.block<1,6>(j,0);
+    //     }
+    //     Matrix<double,6,6> coefficient_matrix = Jacobian.transpose() * Jacobian;
+    //     coefficient_matrix = Jacobian.transpose() * Jacobian;
+    //     SelfAdjointEigenSolver<Matrix<double, 6, 6>> eigen_solver(coefficient_matrix);
+    //     if (eigen_solver.info() != Eigen::Success)
+    //     {
+    //         abort();
+    //     }
+    //     if (eigen_solver.eigenvalues()[0] > degeneracy * degeneracy)
+    //         return;
 
-        Eigen::JacobiSVD<Eigen::MatrixXd> svd(Jacobian, Eigen::ComputeFullU | Eigen::ComputeFullV);
-        Eigen::VectorXd singlevalues = svd.singularValues();
-        cout << "singlevalues: " << singlevalues.transpose() << endl;
-        Eigen::MatrixXd U = svd.matrixU();
-        Eigen::MatrixXd V = svd.matrixV();
+    //     Eigen::JacobiSVD<Eigen::MatrixXd> svd(Jacobian, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    //     Eigen::VectorXd singlevalues = svd.singularValues();
+    //     cout << "singlevalues: " << singlevalues.transpose() << endl;
+    //     Eigen::MatrixXd U = svd.matrixU();
+    //     Eigen::MatrixXd V = svd.matrixV();
 
-        Eigen::MatrixXd S = Eigen::MatrixXd::Zero(effct_feat_num, 6);
-        for (int j = 0; j < 6; ++j) {
-            if (singlevalues[j] > degeneracy) {
-                S(j, j) = singlevalues[j];
-            }
-            else
-                S(j, j) = 0.0001;
-        }
-        Eigen::MatrixXd tmp = Eigen::MatrixXd::Zero(effct_feat_num, 6);
-        ekfom_data.h_x <<  U * S * V.transpose(), tmp;
-    }
+    //     Eigen::MatrixXd S = Eigen::MatrixXd::Zero(effct_feat_num, 6);
+    //     for (int j = 0; j < 6; ++j) {
+    //         if (singlevalues[j] > degeneracy) {
+    //             S(j, j) = singlevalues[j];
+    //         }
+    //         else
+    //             S(j, j) = 0.0001;
+    //     }
+    //     Eigen::MatrixXd tmp = Eigen::MatrixXd::Zero(effct_feat_num, 6);
+    //     ekfom_data.h_x <<  U * S * V.transpose(), tmp;
+    // }
     solve_time += omp_get_wtime() - solve_start_;
 }
 
@@ -990,6 +993,9 @@ int main(int argc, char** argv)
     nh.param<double>("mapping/acc_cov",acc_cov,0.1);
     nh.param<double>("mapping/b_gyr_cov",b_gyr_cov,0.0001);
     nh.param<double>("mapping/b_acc_cov",b_acc_cov,0.0001);
+    nh.param<double>("mapping/lambda_th", lambda_th, 20.0);
+    nh.param<double>("mapping/gamma", gamma_damping, 10000.0);
+    nh.param<bool>("mapping/enable_adaptive_compensation", enable_adaptive_compensation, true);
     nh.param<double>("mapping/degeneracy",degeneracy,4.48);
     nh.param<double>("preprocess/blind", p_pre->blind, 0.01);
     nh.param<int>("preprocess/lidar_type", p_pre->lidar_type, AVIA);
@@ -1047,6 +1053,8 @@ int main(int argc, char** argv)
     double epsi[23] = {0.001};
     fill(epsi, epsi+23, 0.001);
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
+    kf.set_degeneracy_params(lambda_th, gamma_damping);
+    kf.set_adaptive_compensation_enabled(enable_adaptive_compensation);
 
     /*** debug record ***/
     FILE *fp;
