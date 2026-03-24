@@ -1061,14 +1061,14 @@ int main(int argc, char** argv)
     string pos_log_dir = root_dir + "/Log/pos_log.txt";
     fp = fopen(pos_log_dir.c_str(),"w");
 
-    FILE *f_traj_tum;
-    stringstream traj_tum_path;
-    double current_time = ros::Time().now().toSec();
-    traj_tum_path << root_dir << "/Log/traj" << setprecision(13) << current_time << ".txt";
-    f_traj_tum = fopen(traj_tum_path.str().c_str(),"w");
-    fprintf(f_traj_tum, "#sec,x,y,z,qx,qy,qz,qw");
-    fprintf(f_traj_tum, "\r\n");
-    fflush(f_traj_tum);
+    // FILE *f_traj_tum;
+    // stringstream traj_tum_path;
+    // double current_time = ros::Time().now().toSec();
+    // traj_tum_path << root_dir << "/Log/traj" << setprecision(13) << current_time << ".txt";
+    // f_traj_tum = fopen(traj_tum_path.str().c_str(),"w");
+    // fprintf(f_traj_tum, "#sec,x,y,z,qx,qy,qz,qw");
+    // fprintf(f_traj_tum, "\r\n");
+    // fflush(f_traj_tum);
 
     ofstream fout_pre, fout_out, fout_dbg;
     fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
@@ -1821,11 +1821,11 @@ int main(int argc, char** argv)
             // publish_map(pubLaserCloudMap);
 
             //write traj
-            fprintf(f_traj_tum, "%lf ", Measures.lidar_end_time);
-            fprintf(f_traj_tum, "%lf %lf %lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2));
-            fprintf(f_traj_tum, "%lf %lf %lf %lf", geoQuat.x, geoQuat.y, geoQuat.z, geoQuat.w);
-            fprintf(f_traj_tum, "\r\n");
-            fflush(f_traj_tum);
+            // fprintf(f_traj_tum, "%lf ", Measures.lidar_end_time);
+            // fprintf(f_traj_tum, "%lf %lf %lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2));
+            // fprintf(f_traj_tum, "%lf %lf %lf %lf", geoQuat.x, geoQuat.y, geoQuat.z, geoQuat.w);
+            // fprintf(f_traj_tum, "\r\n");
+            // fflush(f_traj_tum);
 
             /*** Debug variables ***/
             if (runtime_pos_log)

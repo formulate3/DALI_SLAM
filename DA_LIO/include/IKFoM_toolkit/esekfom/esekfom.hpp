@@ -1809,28 +1809,43 @@ public:
 					Eigen::Matrix3d D_t = Eigen::Matrix3d::Zero();
 					Eigen::Matrix3d D_r = Eigen::Matrix3d::Zero();
 
+					//5.6.用条件数评估结果指导阻尼注入
+					double condition_number_t = es_t.eigenvalues()(2) / (es_t.eigenvalues()(0) + 1e-6); // 条件数评估
+					double condition_number_r = es_r.eigenvalues()(2) / (es_r.eigenvalues()(0) + 1e-6); // 条件数评估
+					if(condition_number_t > lambda_th) {
+						// 平移部分条件数过大，说明平移退化严重，只对最小特征值方向注入较大阻尼
+						Eigen::Vector3d v_t = es_t.eigenvectors().col(0); // 最小特征值对应的特征向量
+						double alpha_t = lambda_th/condition_number_t; // 计算退化程度对应的阻尼权重 (趋近于0表示严重退化)
+						D_t += gamma * (1-alpha_t) * v_t * v_t.transpose();
+					}
+					if(condition_number_r > lambda_th) {
+						// 旋转部分条件数过大，说明旋转退化严重，只对最小特征值方向注入较大阻尼
+						Eigen::Vector3d v_r = es_r.eigenvectors().col(0); // 最小特征值对应的特征向量
+						double alpha_r = lambda_th/condition_number_r; // 计算退化程度对应的阻尼权重 (趋近于0表示严重退化)
+						D_r += gamma * (1-alpha_r) * v_r * v_r.transpose();
+					}
 					// 5. 评价平移退化并构造阻尼矩阵
 					// es_t.eigenvalues()(0) 是最小特征值
-					for (int i = 0; i < 3; ++i) {
-						double lambda_i = es_t.eigenvalues()(i);
-						if (lambda_i < lambda_th) {
-							// 计算连续退化因子 alpha (趋近于0表示严重退化)
-							double alpha = 1.0 - std::exp(-lambda_i / lambda_th);
-							// 提取对应的主方向 (列向量)
-							Eigen::Vector3d v_i = es_t.eigenvectors().col(i);
-							// 累加自适应阻尼
-							D_t += gamma * (1.0 - alpha) * v_i * v_i.transpose();
-						}
-					}
-					// 6. 评价旋转退化并构造阻尼矩阵
-					for (int i = 0; i < 3; ++i) {
-						double lambda_i = es_r.eigenvalues()(i);
-						if (lambda_i < lambda_th) {
-							double alpha = 1.0 - std::exp(-lambda_i / lambda_th);
-							Eigen::Vector3d v_i = es_r.eigenvectors().col(i);
-							D_r += gamma * (1.0 - alpha) * v_i * v_i.transpose();
-						}
-					}
+					// for (int i = 0; i < 3; ++i) {
+					// 	double lambda_i = es_t.eigenvalues()(i);
+					// 	if (lambda_i < lambda_th) {
+					// 		// 计算连续退化因子 alpha (趋近于0表示严重退化)
+					// 		double alpha = 1.0 - std::exp(-lambda_i / lambda_th);
+					// 		// 提取对应的主方向 (列向量)
+					// 		Eigen::Vector3d v_i = es_t.eigenvectors().col(i);
+					// 		// 累加自适应阻尼
+					// 		D_t += gamma * (1.0 - alpha) * v_i * v_i.transpose();
+					// 	}
+					// }
+					// // 6. 评价旋转退化并构造阻尼矩阵
+					// for (int i = 0; i < 3; ++i) {
+					// 	double lambda_i = es_r.eigenvalues()(i);
+					// 	if (lambda_i < lambda_th) {
+					// 		double alpha = 1.0 - std::exp(-lambda_i / lambda_th);
+					// 		Eigen::Vector3d v_i = es_r.eigenvectors().col(i);
+					// 		D_r += gamma * (1.0 - alpha) * v_i * v_i.transpose();
+					// 	}
+					// }
 					// 7. 靶向阻尼注入 HTH 矩阵
 					HTH.template block<3, 3>(0, 0) += D_t;
 					HTH.template block<3, 3>(3, 3) += D_r;
