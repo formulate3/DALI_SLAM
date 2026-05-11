@@ -1,37 +1,36 @@
 common:
     lid_topic:  "/velodyne_points"
-    imu_topic:  "/imu/data"
+    imu_topic:  "/zed2/zed_node/imu/data"
     time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
     time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
                                   # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
     
 preprocess:
     lidar_type: 2                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
-    scan_line: 16
-    scan_rate: 10
-    timestamp_unit: 0                 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
+    scan_line: 32
+    scan_rate: 10 
+    timestamp_unit: 2                 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
     blind: 2
 
 mapping:
-    acc_cov: 0.08
-    gyr_cov: 0.004
-    b_acc_cov: 0.00004
-    b_gyr_cov: 0.000002
-    spline_undistort_en: true
+    acc_cov: 0.1
+    gyr_cov: 0.1
+    b_acc_cov: 0.0001
+    b_gyr_cov: 0.0001
+    spline_undistort_en: false
     enable_adaptive_compensation: false  #是否用自适应补偿的方法
     lambda_th: 40.0    # 绝对特征值阈值
-    gamma: 100.0     # 极大的阻尼惩罚权重
+    gamma: 10000.0     # 极大的阻尼惩罚权重
     fov_degree:    180
     det_range:     100.0
-    degeneracy: 0  #sqrt(20) Adjust according to the Log/mini_eigenvalue.txt
-    extrinsic_est_en:  true      # true: enable the online estimation of IMU-LiDAR extrinsic
-    extrinsic_T: [-0.080000000, -0.029000000, -0.030000000]
-    extrinsic_R: [  1, 0,  0,  
-                    0,  1, 0, 
-                    0,  0,  1 ]
+    extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
+    extrinsic_T: [ 0.0904, 0.0621, -0.0746 ]
+    extrinsic_R: [ 0.998688, -0.051027, -0.004126,
+                 0.051109,  0.998410,  0.023736,
+                 0.002908, -0.023914,  0.999710 ]
 
 publish:
-    path_en:  false
+    path_en:  true
     scan_publish_en:  true       # false: close all the point cloud output
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame

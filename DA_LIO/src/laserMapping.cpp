@@ -131,6 +131,7 @@ double degeneracy = 0; //threshold for degeneracy detection
 double lambda_th = 20.0;
 double gamma_damping = 10000.0;
 bool enable_adaptive_compensation = true;
+bool enable_spline_undistort = true;
 
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
@@ -455,6 +456,12 @@ bool sync_packages(MeasureGroup &meas)
 }
 
 int process_increments = 0;
+double sum_time_to_imu_undistort = 0.0;
+double sum_time_after_undistort_to_spline = 0.0;
+double sum_time_per_frame_total = 0.0;
+uint64_t cnt_time_to_imu_undistort = 0;
+uint64_t cnt_time_after_undistort_to_spline = 0;
+uint64_t cnt_time_per_frame_total = 0;
 void map_incremental()
 {
     PointVector PointToAdd;
@@ -996,6 +1003,7 @@ int main(int argc, char** argv)
     nh.param<double>("mapping/lambda_th", lambda_th, 20.0);
     nh.param<double>("mapping/gamma", gamma_damping, 10000.0);
     nh.param<bool>("mapping/enable_adaptive_compensation", enable_adaptive_compensation, true);
+    nh.param<bool>("mapping/spline_undistort_en", enable_spline_undistort, true);
     nh.param<double>("mapping/degeneracy",degeneracy,4.48);
     nh.param<double>("preprocess/blind", p_pre->blind, 0.01);
     nh.param<int>("preprocess/lidar_type", p_pre->lidar_type, AVIA);
@@ -1136,6 +1144,9 @@ int main(int argc, char** argv)
             vector<Pose6D> imu_poses_vec;
             PointCloudXYZI::Ptr feats_undistort_copy(new PointCloudXYZI()); //raw point cloud copy for re-undistort
             p_imu->Process(Measures, kf, feats_undistort, feats_undistort_copy, imu_poses_vec); //imu integration and correct distortion
+            double t_imu_undistort_done = omp_get_wtime();
+            sum_time_to_imu_undistort += (t_imu_undistort_done - t0);
+            cnt_time_to_imu_undistort++;
             state_point = kf.get_x();
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
 
@@ -1267,37 +1278,40 @@ int main(int argc, char** argv)
                 }
             }
 
-            //scan-to-Map registration using filter predicted pose as initial guess
-            gtsam::Pose3 scanToMap_pose = gtsam::Pose3(gtsam::Rot3(state_point.rot.toRotationMatrix()),
-                                                       gtsam::Point3(state_point.pos));
-            gtsam::Pose3 extrinsic = gtsam::Pose3(gtsam::Rot3(state_point.offset_R_L_I.toRotationMatrix()),
-                                                  gtsam::Point3(state_point.offset_T_L_I));
-            pcl::PointCloud<PointType>::Ptr scan(new pcl::PointCloud<PointType>());
-            pcl::PointCloud<PointType>::Ptr scan_inIMU(new pcl::PointCloud<PointType>());
-            for (int j = 0; j < feats_down_body->size(); ++j) {
-                PointType pt;
-                pt.x = feats_down_body->points[j].x;
-                pt.y = feats_down_body->points[j].y;
-                pt.z = feats_down_body->points[j].z;
-                scan->push_back(pt);
+            if (enable_spline_undistort)
+            {
+                //scan-to-Map registration using filter predicted pose as initial guess
+                gtsam::Pose3 scanToMap_pose = gtsam::Pose3(gtsam::Rot3(state_point.rot.toRotationMatrix()),
+                                                           gtsam::Point3(state_point.pos));
+                gtsam::Pose3 extrinsic = gtsam::Pose3(gtsam::Rot3(state_point.offset_R_L_I.toRotationMatrix()),
+                                                      gtsam::Point3(state_point.offset_T_L_I));
+                pcl::PointCloud<PointType>::Ptr scan(new pcl::PointCloud<PointType>());
+                pcl::PointCloud<PointType>::Ptr scan_inIMU(new pcl::PointCloud<PointType>());
+                for (int j = 0; j < feats_down_body->size(); ++j) {
+                    PointType pt;
+                    pt.x = feats_down_body->points[j].x;
+                    pt.y = feats_down_body->points[j].y;
+                    pt.z = feats_down_body->points[j].z;
+                    scan->push_back(pt);
+                }
+                transformPointcloud(scan, extrinsic, scan_inIMU);
+                //voxelGridFilter<PointType>(scan_inIMU, 0.4);
+                scanToMapRegi(scan_inIMU, ikdtree, scanToMap_pose,
+                              15, 1.0, 0.05, 0.1);
+                //cout << "scan-to-Map pose: ";
+                //scanToMap_pose.print();
+                PoseData lf_pose;
+                lf_pose.timestamp = Measures.lidar_end_time;
+                lf_pose.pose = scanToMap_pose;
+                lf_pose_vec.push_back(lf_pose);
+                //cout << "lf_pose_vec size: " << lf_pose_vec.size() << endl;
+                cout << "scan-to-Map registration done" << endl;
+
+                if (lf_pose_vec.size() == 4) //3 order
+                    start_fit_spline = true;
             }
-            transformPointcloud(scan, extrinsic, scan_inIMU);
-            //voxelGridFilter<PointType>(scan_inIMU, 0.4);
-            scanToMapRegi(scan_inIMU, ikdtree, scanToMap_pose,
-                          15, 1.0, 0.05, 0.1);
-            //cout << "scan-to-Map pose: ";
-            //scanToMap_pose.print();
-            PoseData lf_pose;
-            lf_pose.timestamp = Measures.lidar_end_time;
-            lf_pose.pose = scanToMap_pose;
-            lf_pose_vec.push_back(lf_pose);
-            //cout << "lf_pose_vec size: " << lf_pose_vec.size() << endl;
-            cout << "scan-to-Map registration done" << endl;
 
-            if (lf_pose_vec.size() == 4) //3 order
-                start_fit_spline = true;
-
-            if (start_fit_spline)
+            if (enable_spline_undistort && start_fit_spline)
             {
                 //init spline
                 cout << "start to init lf-spline" << endl;
@@ -1767,6 +1781,8 @@ int main(int argc, char** argv)
                 }
             }
             t1 = omp_get_wtime();
+            sum_time_after_undistort_to_spline += (t1 - t_imu_undistort_done);
+            cnt_time_after_undistort_to_spline++;
             
             /*** iterated state estimation ***/
             double t_update_start = omp_get_wtime();
@@ -1782,15 +1798,20 @@ int main(int argc, char** argv)
 
             double t_update_end = omp_get_wtime();
 
-            gtsam::Pose3 pose = gtsam::Pose3(gtsam::Rot3(state_point.rot.toRotationMatrix()),
-                                             gtsam::Point3(state_point.pos));
-            lf_pose.pose = pose;
-            lf_pose.timestamp = Measures.lidar_end_time;
-            lf_pose_vec.pop_back();
-            lf_pose_vec.push_back(lf_pose);
-            if (lf_pose_vec.size() == 4)
-                lf_pose_vec.pop_front();
-            start_fit_spline = false;
+            if (enable_spline_undistort)
+            {
+                gtsam::Pose3 pose = gtsam::Pose3(gtsam::Rot3(state_point.rot.toRotationMatrix()),
+                                                 gtsam::Point3(state_point.pos));
+                PoseData lf_pose;
+                lf_pose.pose = pose;
+                lf_pose.timestamp = Measures.lidar_end_time;
+                if (!lf_pose_vec.empty())
+                    lf_pose_vec.pop_back();
+                lf_pose_vec.push_back(lf_pose);
+                if (lf_pose_vec.size() == 4)
+                    lf_pose_vec.pop_front();
+                start_fit_spline = false;
+            }
 
             /******* Publish odometry *******/
             publish_odometry(pubOdomAftMapped);
@@ -1812,6 +1833,8 @@ int main(int argc, char** argv)
             t3 = omp_get_wtime();
             map_incremental();
             t5 = omp_get_wtime();
+            sum_time_per_frame_total += (t5 - t0);
+            cnt_time_per_frame_total++;
             
             /******* Publish points *******/
             if (path_en)                         publish_path(pubPath);
@@ -1892,6 +1915,41 @@ int main(int argc, char** argv)
             fprintf(fp2,"%0.8f,%0.8f,%d,%d,%0.8f,%0.8f,%0.8f,%0.8f,%d,%0.8f,%d,%d,%d\n",T1[i],s_plot[i],int(s_plot2[i]),int(s_plot22[i]),s_plot23[i], s_plot3[i],s_plot4[i], s_plot9[i], int(s_plot5[i]),s_plot6[i],int(s_plot7[i]),int(s_plot8[i]), int(s_plot10[i]));
         }
         fclose(fp2);
+    }
+
+    cout.setf(ios::fixed);
+    cout << setprecision(6);
+    if (cnt_time_to_imu_undistort > 0)
+    {
+        cout << "[Timing] avg time to finish IMU undistort (line 1138): "
+             << (sum_time_to_imu_undistort / static_cast<double>(cnt_time_to_imu_undistort))
+             << " s, frames=" << cnt_time_to_imu_undistort << endl;
+    }
+    else
+    {
+        cout << "[Timing] avg time to finish IMU undistort (line 1138): N/A" << endl;
+    }
+
+    if (cnt_time_after_undistort_to_spline > 0)
+    {
+        cout << "[Timing] avg time from IMU undistort to end of if(start_fit_spline): "
+             << (sum_time_after_undistort_to_spline / static_cast<double>(cnt_time_after_undistort_to_spline))
+             << " s, frames=" << cnt_time_after_undistort_to_spline << endl;
+    }
+    else
+    {
+        cout << "[Timing] avg time from IMU undistort to end of if(start_fit_spline): N/A" << endl;
+    }
+
+    if (cnt_time_per_frame_total > 0)
+    {
+        cout << "[Timing] avg total processing time per frame: "
+             << (sum_time_per_frame_total / static_cast<double>(cnt_time_per_frame_total))
+             << " s, frames=" << cnt_time_per_frame_total << endl;
+    }
+    else
+    {
+        cout << "[Timing] avg total processing time per frame: N/A" << endl;
     }
 
     return 0;

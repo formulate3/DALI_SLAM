@@ -16,7 +16,8 @@ mapping:
     gyr_cov: 0.1
     b_acc_cov: 0.0001
     b_gyr_cov: 0.0001
-    enable_adaptive_compensation: true  #是否用自适应补偿的方法
+    spline_undistort_en: true
+    enable_adaptive_compensation: false  #是否用自适应补偿的方法
     lambda_th: 40.0    # 绝对特征值阈值
     gamma: 10000.0     # 极大的阻尼惩罚权重
     fov_degree:    180
@@ -38,4 +39,4 @@ pcd_save:
     interval: -1                 # how many LiDAR frames saved in each pcd file; 
                                  # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 savePose: true
-savePoseDirectory: "/home/tkw/AAA_baseline/DALI_SLAM/src/DALI_SLAM/DA_LIO/dali.txt"
+savePoseDirectory: "/home/wxy/AAA_baseline/DALI_SLAM/src/DALI_SLAM/DA_LIO/dali.txt"
